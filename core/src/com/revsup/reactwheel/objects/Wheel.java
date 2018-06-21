@@ -1,15 +1,21 @@
 package com.revsup.reactwheel.objects;
 
 import com.badlogic.gdx.Gdx;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
 import com.badlogic.gdx.math.Vector2;
 
 import java.util.Random;
+
+import static com.badlogic.gdx.Input.Keys.R;
 
 
 public class Wheel extends ShapeRenderer {
@@ -20,16 +26,24 @@ public class Wheel extends ShapeRenderer {
     private float dir;
     private Vector2 target;
     private Vector2 prevTarget;
-    private double dist;
     private float targetRadius;
     private boolean gameRunning;
     private boolean targetWasInRange;
+    private Vector2 hitPoint;
+    private float screenWidth = Gdx.graphics.getWidth();
+    private float screenHeight = Gdx.graphics.getHeight();
+    private BitmapFont scoreFont;
+    private BitmapFont highScoreFont;
+    private int score;
 
     //colors
     private static final Color BACKGROUND = new Color(38/255f,50/255f,56/255f, 1f);
     private static final Color RED = new Color(231/255f,76/255f,60/255f,1f);
     private static final Color BLUE = new Color(52/255f,152/255f,219/255f,1f);
     private static final Color WHITE = new Color(1f,1f,1f,1f);
+    private static final Color SKY = new Color(150/255f,250/255f,253/255f,1f);
+    private static final Color GREEN = new Color(91/255f,161/255f,65/255f,1f);
+
 
     private SpriteBatch batch;
     private static final int FRAME_COLS = 8;
@@ -40,24 +54,37 @@ public class Wheel extends ShapeRenderer {
     private boolean targetHit;
     private float angleSpeed;
 
+    private Texture tapToPlay;
+    private Texture highScore;
+
+    private GlyphLayout layout;
+
+    private Sound explosionSound;
+    private Sound victorySound;
+    private Music music;
+
 
     public Wheel(SpriteBatch batch) {
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
+
         center = new Vector2(screenWidth/2f, screenHeight-screenHeight/3f);
         radius = screenWidth/2.5f;
 
         arm = new Vector2(center.x+radius/1.1f,center.y);
         angleSpeed = 0.0f;
 
+        hitPoint = new Vector2((arm.x*1.1f)/1.165f, arm.y);
+
+
+
+        tapToPlay = new Texture("taptoplay.png");
+        highScore = new Texture("highscore.png");
+
         isClockwise = false;
         dir = 1f;
 
         target = new Vector2(center.x, center.y+radius/1.3f);
 
-        dist = 0.0;
-
-        targetRadius=45f;
+        targetRadius=screenWidth/25f;
 
         this.batch = batch;
 
@@ -71,7 +98,33 @@ public class Wheel extends ShapeRenderer {
 
         targetWasInRange = false;
 
+        scoreFont = new BitmapFont();
+        scoreFont.getRegion().getTexture().setFilter(
+                Texture.TextureFilter.Linear,
+                Texture.TextureFilter.Linear);
+        scoreFont.getData().setScale(6f);
+
+        highScoreFont = new BitmapFont();
+        highScoreFont.getRegion().getTexture().setFilter(
+                Texture.TextureFilter.Linear,
+                Texture.TextureFilter.Linear);
+        highScoreFont.getData().setScale(6f);
+
+        SavedDataManager.getInstance().load();
+
+        layout = new GlyphLayout(scoreFont, String.valueOf(score));
+
+        score = 0;
+
+        explosionSound = Gdx.audio.newSound(Gdx.files.internal("explode.wav"));
+        victorySound = Gdx.audio.newSound(Gdx.files.internal("victory.mp3"));
+
+        music = Gdx.audio.newMusic(Gdx.files.internal("music.mp3"));
+        music.setVolume(0.5f);
+        music.play();
+        music.setLooping(true);
     }
+
 
     public void initAnimation(){
         explosionSheet = new Texture("explosion.png");
@@ -109,6 +162,19 @@ public class Wheel extends ShapeRenderer {
         this.begin(ShapeType.Filled);
         //outer ring
 
+        this.setColor(SKY);
+        this.circle(200,1500,900);
+        this.circle(screenWidth-200, 1500, 900, 4);
+
+        this.setColor(GREEN);
+        this.rect(200,500,35,100);
+        this.circle(217.5f,600,17.5f);
+        this.rect(400,600,35,120);
+        this.circle(417.5f,720,17.5f);
+        this.rect(650,550,35,80);
+        this.circle(667.5f,630,17.5f);
+
+
         this.setColor(Color.WHITE);
         this.circle(center.x,center.y,radius,14);
 
@@ -130,8 +196,6 @@ public class Wheel extends ShapeRenderer {
         setColor(RED);
         circle(center.x,center.y,radius/3f,6);
 
-        float screenWidth = Gdx.graphics.getWidth();
-        float screenHeight = Gdx.graphics.getHeight();
 
         setColor(RED);
         triangle(90,10,screenWidth/2f,130,screenWidth-90,10);
@@ -143,6 +207,7 @@ public class Wheel extends ShapeRenderer {
         triangle(90,300,screenWidth/2f,430,screenWidth-90,300);
 
 
+
         renderTarget();
         this.end();
 
@@ -150,25 +215,43 @@ public class Wheel extends ShapeRenderer {
 
         if(targetHit)
         showExplosion();
+
+        scoreFont.draw(batch, layout, center.x - layout.width/2, center.y+layout.height/2);
+
+        if(!gameRunning)
+            batch.draw(tapToPlay, (screenWidth - tapToPlay.getWidth())/2, screenHeight/4);
+
+        batch.draw(highScore, 20f, 1650f);
+
+        highScoreFont.draw(batch,String.valueOf(SavedDataManager.getInstance().getHighScore()),
+                highScore.getWidth()+50, 1720);
+
         batch.end();
+
+
     }
     public void renderTarget() {
         setColor(BLUE);
         circle(target.x, target.y, targetRadius, 9);
         setColor(WHITE);
-        circle(target.x, target.y, 30f, 7);
+        circle(target.x, target.y, targetRadius/1.5f, 7);
         setColor(RED);
-        circle(target.x, target.y, 20f, 5);
+        circle(target.x, target.y, targetRadius/3.0f, 5);
 
     }
     public void checkInput() {
         boolean touched = Gdx.input.justTouched();
+
+        if(distance(hitPoint, target) > 20.0 && distance(hitPoint, target) < 40.0)
+            targetWasInRange = true;
+
 
         if (gameRunning) {
 
 
             if (touched && targetInRange()) {
                 isClockwise = !isClockwise;
+                targetWasInRange = false;
 
                 Random rnd = new Random();
                 float ang = 0.0f + rnd.nextFloat() * (360f - 0f);
@@ -176,34 +259,62 @@ public class Wheel extends ShapeRenderer {
                 targetHit = true;
 
                 prevTarget = new Vector2(target.x, target.y);
-                target = rotate(target, ang);
+
+                explosionSound.play();
+
+                score ++;
+
+
+                do{
+                    target = rotate(target,ang);
+
+                }while(distance(target, prevTarget) < 500);
+
             } else if(touched && !targetInRange()){
                 stopGame();
-            } else if(!touched && targetWasInRange && dist > 100){
+            } else if(!touched && targetWasInRange && distance(hitPoint,target) > 100){
                 stopGame();
             }
         }else{
                 if(touched)
 
                 startGame();
+                else
+                    resetGame();
             }
 
 
             }
+     public void resetGame(){
+        arm.x = center.x+radius/1.1f;
+        arm.y = center.y;
+        hitPoint.x = arm.x/1.08f;
+        hitPoint.y = arm.y;
+        target.x = center.x;
+        target.y = center.y+radius/1.3f;
+        isClockwise = true;
+        targetWasInRange = false;
+
+     }
 
     public void startGame(){
         gameRunning = true;
         angleSpeed = 0.045f;
+        score = 0;
     }
     public void stopGame(){
         gameRunning = false;
         angleSpeed = 0.0f;
+        if(score > SavedDataManager.getInstance().getHighScore())
+            victorySound.play();
+        SavedDataManager.getInstance().setHighScore(score);
+        SavedDataManager.getInstance().save();
     }
 
 
         private boolean targetInRange(){
-           float hitRange = targetRadius * 2f;
-           boolean inRange = (dist<= hitRange);
+           float hitRange = 30f;
+           boolean inRange = (distance(hitPoint,target)<= hitRange);
            return inRange;
 
         }
@@ -224,20 +335,30 @@ public class Wheel extends ShapeRenderer {
         return p;
 
     }
+    public double distance(Vector2 p1, Vector2 p2){
+       return Math.sqrt(Math.pow((p2.x - p1.x), 2)+
+                Math.pow((p2.y- p1.y),2));
+
+    }
 
     public void update(){
-        if(dist > 80.0 && dist < 90.0)
-            targetWasInRange = true;
 
         checkInput();
+        layout.setText(scoreFont, String.valueOf(score));
 
         dir = (isClockwise) ? -1f : 1f;
 
         arm = rotate(arm, angleSpeed);
-
-        dist = Math.sqrt(Math.pow((target.x - arm.x), 2)+
-                         Math.pow((target.y- arm.y),2));
+        hitPoint = rotate(hitPoint, angleSpeed);
 
 
+
+    }
+
+    public void dispose(){
+        explosionSound.dispose();
+        victorySound.dispose();
+        music.dispose();
+        this.dispose();
     }
 }
